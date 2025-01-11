@@ -386,6 +386,7 @@ void WindowClient::on_pushButtonLogin_clicked()
       perror("Erreur de msgnd LOGIN du client\n");
       exit(1);
     }
+    setNom("");
     printf("Auth envoyé\n");
 }
 
@@ -535,13 +536,20 @@ void handlerSIGUSR1(int sig)
         case CONSULT :
                     {
                       fprintf(stderr,"Signal reçue par le client : CONSULT\n");
-                      articleEnCours.id = m.data1; // id
-                      strncpy(articleEnCours.intitule, m.data2, sizeof(articleEnCours.intitule)); // Nom de l'article
-                      articleEnCours.prix = m.data5; // Prix unitaire
-                      articleEnCours.stock = atoi(m.data3); //stock
-                      strncpy(articleEnCours.image, m.data4, sizeof(articleEnCours.image)); // Chemin de l'image
+
+                      if(m.data1 != -1)
+                      {
+                        articleEnCours.id = m.data1; // id
+                        fprintf(stderr,"m.data1 = %d \n", m.data1);
+                        strncpy(articleEnCours.intitule, m.data2, sizeof(articleEnCours.intitule)); // Nom de l'article
+                        articleEnCours.prix = m.data5; // Prix unitaire
+                        articleEnCours.stock = atoi(m.data3); //stock
+                        strncpy(articleEnCours.image, m.data4, sizeof(articleEnCours.image)); // Chemin de l'image
                       
-                      w->setArticle(articleEnCours.intitule, articleEnCours.prix, articleEnCours.stock, articleEnCours.image);
+                        w->setArticle(articleEnCours.intitule, articleEnCours.prix, articleEnCours.stock, articleEnCours.image);
+                      }
+                      else
+                        w->dialogueErreur("Erreur dans le consult", "m.data1=-1");
                       break;
                     }
         case ACHAT : // TO DO (étape 5)
