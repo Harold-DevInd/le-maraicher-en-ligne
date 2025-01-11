@@ -44,7 +44,7 @@ chaîne de caractères (51 caractères + 1 pour le ‘\0’ = 52)
 	Il s’agit à présent de gérer les premiers accès à la base de données contenant les articles du 
 maraicher en ligne, ainsi que leur affichage dans l’interface graphique : Ce n’est pas le processus Serveur qui va accéder directement à la base de données. A chaque client « loggé » va correspondre un processus Caddie qui va (dans un premier temps) gérer l’accès à la base de données (mais également la gestion du panier du client correspondant ; voir étape 5). Dans cette étape, le processus Caddie va se contenter de réaliser la recherche en base de données lorsqu’il reçoit une requête de consultation et transmettre le résultat au processus client correspondant.
 
-##Etape 4 :  Accès unique à la base de données et création d’un pipe 
+## Etape 4 :  Accès unique à la base de données et création d’un pipe 
 On se rend rapidement compte que la manière de faire décrite plus haut n’est pas optimale : 
 • Il y a autant de connexions à la base de données qu’il y a de processus Caddie en 
 cours d’exécution (c’est-à-dire qu’il y a de clients connectés) 
@@ -55,7 +55,7 @@ L’idée est alors de confier l’accès à la base de données à un seul proc
 processus Caddie transmettront alors (via un unique pipe de communication) leurs requêtes 
 à AccesBD : la connexion à la base de données sera alors unique et il n’y aura plus aucun accès concurrent. Le transfert de données via le pipe ne se fait donc que des processus Caddie vers l’unique processus AccesBD. 
 
-##Etape 5 : Achats d’articles et mise à jour du panier 
+## Etape 5 : Achats d’articles et mise à jour du panier 
 Il s’agit ici de gérer l’achat d’articles par le client, Cette étape va se faire en 2 temps : 
 a) L’envoi d’une requête d’ACHAT au serveur et la mise à jour de la base de données. 
 b) L’envoi d’une requête CADDIE au serveur afin de mettre à jour l’affichage du caddie 
