@@ -109,11 +109,6 @@ WindowClient::WindowClient(QWidget *parent) : QMainWindow(parent), ui(new Ui::Wi
       exit(1);
     }
     printf("Connexion envoyé\n");
-
-    // Exemples à supprimer
-    //setPublicite("Promotions sur les concombres !!!");
-    //setArticle("pommes",5.53,18,"pommes.jpg");
-    ajouteArticleTablePanier("cerises",8.96,2);
 }
 
 WindowClient::~WindowClient()
@@ -386,7 +381,7 @@ void WindowClient::on_pushButtonLogin_clicked()
       perror("Erreur de msgnd LOGIN du client\n");
       exit(1);
     }
-    setNom("");
+    setMotDePasse("");
     printf("Auth envoyé\n");
 }
 
@@ -444,7 +439,19 @@ void WindowClient::on_pushButtonPrecedent_clicked()
 void WindowClient::on_pushButtonAcheter_clicked()
 {
     // TO DO (étape 5)
-    // Envoi d'une requete ACHAT au serveur
+    // Envoi d'une requete de login au serveur
+    m.type = 1;
+    m.expediteur = getpid();
+    m.requete = ACHAT;
+    m.data1 = articleEnCours.id;
+    sprintf(m.data2,"%d",getQuantite());
+
+    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("Erreur de msgnd ACHAT du client\n");
+      exit(1);
+    }
+    printf("Achat envoyé\n");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -509,7 +516,7 @@ void handlerSIGUSR1(int sig)
                     fprintf(stderr,"Signal reçue par le client : LOGIN\n");
                     if(m.data1 == 1)
                     {
-                      w->dialogueMessage("Succes", m.data4);
+                      w->dialogueMessage("Succes...", m.data4);
                       w->loginOK();
                       logged = 1;
 
@@ -521,14 +528,14 @@ void handlerSIGUSR1(int sig)
 
                       if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
                       {
-                        perror("Erreur de msgnd LOGOUT du client\n");
+                        perror("Erreur de msgnd LOGIN du client\n");
                         exit(1);
                       }
                       fprintf(stderr, "Consultation initiale envoyé\n");
                     }
                     if(m.data1 == 0)
                     {
-                      w->dialogueErreur("Erreur", m.data4);
+                      w->dialogueErreur("Erreur...", m.data4);
                       logged = 0;
                     }
                     break;
@@ -552,12 +559,46 @@ void handlerSIGUSR1(int sig)
                         w->dialogueErreur("Erreur dans le consult", "m.data1=-1");
                       break;
                     }
-        case ACHAT : // TO DO (étape 5)
-                    break;
+        case ACHAT : 
+                    {
+                      fprintf(stderr,"Signal reçue par le client : ACHAT\n");
+                      if(atoi(m.data3) != 0)
+                      {
+                        char texte[200];
 
-         case CADDIE : // TO DO (étape 5)
-                    break;
+                        sprintf(texte, "%d unité(s) de %s achetées avec succès", atoi(m.data3), m.data2);
+                        w->dialogueMessage("Achats...", texte);
 
+                        // Envoi d'une requete de CADDIE au serveur
+                        m.type = 1;
+                        m.expediteur = getpid();
+                        m.requete = CADDIE;
+
+                        if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                        {
+                          perror("Erreur de msgnd CADDIE du client\n");
+                          exit(1);
+                        }
+                        w->videTablePanier();
+                        totalCaddie = 0;
+                        fprintf(stderr, "Consultation du panier envoyé\n");
+                      }
+                      else
+                      {
+                        w->dialogueErreur("Achats...", "Stock insuffisant !");
+                      }
+                      break;
+                    }
+
+         case CADDIE : 
+                    {
+                      fprintf(stderr,"Signal reçue par le client : CADDIE\n");
+                      fprintf(stderr, "--->Article dans le panier :  %s prix %f QT %d\n", m.data2, m.data5, atoi(m.data3));
+                      w->ajouteArticleTablePanier(m.data2, m.data5, atoi(m.data3));
+                      totalCaddie = totalCaddie + m.data5;
+                      w->setTotal(totalCaddie);
+                      break;
+                    }
          case TIME_OUT : // TO DO (étape 6)
                     break;
 

@@ -28,7 +28,6 @@ void handlerSIGALRM(int sig);
 
 int main(int argc,char* argv[])
 {
-  printf("------------Lancement du processus caddie---------------\n");
   // Masquage de SIGINT
   sigset_t mask;
   sigaddset(&mask,SIGINT);
@@ -134,21 +133,99 @@ int main(int argc,char* argv[])
                       fprintf(stderr,"(CADDIE %d) Requete CONSULT reçue de %d\n",getpid(),m.expediteur);
                       break;
                     }
-      case ACHAT :    // TO DO
-                      fprintf(stderr,"(CADDIE %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
+      case ACHAT :  
+                    {
+                      if(nbArticles < 10)
+                      {
+                        // on transfert la requete à AccesBD
+                        requete.type = m.expediteur;
+                        requete.expediteur = getpid();
+                        requete.requete = ACHAT;
+                        requete.data1 = m.data1;
+                        strcpy(requete.data2, m.data2);
+                        if (write(fdWpipe, &requete, sizeof(MESSAGE)) != sizeof(MESSAGE)) 
+                        {
+                          perror("Erreur de write(2) dans le caddie"); 
+                          sleep(3);
+                          exit(1); 
+                        }
 
-                      // on transfert la requete à AccesBD
+                        // on attend la réponse venant de AccesBD
+                        if (msgrcv(idQ,&requete,sizeof(MESSAGE)-sizeof(long),getpid(),0) == -1)
+                        {
+                          perror("(CADDIE) Erreur de msgrcv dans le ACHAT du caddie\n");
+                          sleep(3);
+                          exit(1);
+                        }
+
+                        // Envoi de la reponse au client
+                        if(atoi(requete.data3) != 0)
+                        {
+                          reponse.type = pidClient;
+                          reponse.expediteur = getpid();
+                          reponse.requete = ACHAT;
+
+                          reponse.data1 = requete.data1; //id
+                          strncpy(reponse.data2, requete.data2, sizeof(reponse.data2)); //nom de l'article
+                          strncpy(reponse.data3, requete.data3, sizeof(reponse.data3)); //stock
+                          strncpy(reponse.data4, requete.data4, sizeof(reponse.data2)); //chemin de l'image
+                          reponse.data5 = requete.data5; //prix unitaire
+
+                          if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgsnd ACHAT de caddie\n");
+                            sleep(3);
+                            exit(1);
+                          }
+                          kill(m.expediteur, SIGUSR1);
+                          fprintf(stderr,"Mise a jour des achats envoyé par le Caddie\n");
+
+                          //Ajout d un article a notre liste d'article a acheté
+                          fprintf(stderr,"------Nombre d article acheté avant l'ajout, nbrArticle = %d-------\n", nbArticles);
+                          
+                          articles[nbArticles + 1].id = reponse.data1;
+                          strncpy(articles[nbArticles + 1].intitule, reponse.data2, sizeof(articles[nbArticles + 1].intitule));
+                          articles[nbArticles + 1].prix = reponse.data5;
+                          articles[nbArticles + 1].stock = atoi(reponse.data3);
+                          strncpy(articles[nbArticles + 1].image, reponse.data4, sizeof(articles[nbArticles + 1].image));
+
+                          nbArticles++;
+                        }
+                          fprintf(stderr,"------Nombre d article acheté apres l'ajout, nbrArticle = %d-------\n", nbArticles);
+                      }
                       
-                      // on attend la réponse venant de AccesBD
-                        
-                      // Envoi de la reponse au client
-
+                      fprintf(stderr,"(CADDIE %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
+      case CADDIE :   
+                    {
+                      //Envie e chaque artice au client pour affichage
+                      fprintf(stderr,"------Nombre d article envoyé, nbrArticle = %d-------\n", nbArticles);
+                      for(int i = 1; i <= nbArticles; i++)
+                      {
+                        reponse.data1 = articles[i].id;
+                        fprintf(stderr,"------Article envoyé, id = %d-------\n", reponse.data1);
+                        strncpy(reponse.data2, articles[i].intitule, sizeof(reponse.data2));
+                        reponse.data5 = articles[i].prix;
+                        sprintf(reponse.data3, "%d", articles[i].stock);
+                        strncpy(reponse.data4, articles[i].image, sizeof(reponse.data4));
 
-      case CADDIE :   // TO DO
+                        reponse.type = pidClient;
+                        reponse.expediteur = getpid();
+                        reponse.requete = CADDIE;
+                        if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                        {
+                          perror("Erreur de msgsnd CADDIE de caddie\n");
+                          sleep(3);
+                          exit(1);
+                        }
+                        kill(m.expediteur, SIGUSR1);
+                        sleep(3);
+                      }
+
                       fprintf(stderr,"(CADDIE %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
                       break;
-
+                    }
       case CANCEL :   // TO DO
                       fprintf(stderr,"(CADDIE %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
 
