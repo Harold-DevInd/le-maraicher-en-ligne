@@ -54,3 +54,9 @@ qui risquent de rendre le stock de marchandises inconsistant.
 L’idée est alors de confier l’accès à la base de données à un seul processus AccesBD. Tous les 
 processus Caddie transmettront alors (via un unique pipe de communication) leurs requêtes 
 à AccesBD : la connexion à la base de données sera alors unique et il n’y aura plus aucun accès concurrent. Le transfert de données via le pipe ne se fait donc que des processus Caddie vers l’unique processus AccesBD. 
+
+##Etape 5 : Achats d’articles et mise à jour du panier 
+Il s’agit ici de gérer l’achat d’articles par le client, Cette étape va se faire en 2 temps : 
+a) L’envoi d’une requête d’ACHAT au serveur et la mise à jour de la base de données. 
+b) L’envoi d’une requête CADDIE au serveur afin de mettre à jour l’affichage du caddie 
+dans la table de la fenêtre du client.

@@ -349,14 +349,62 @@ int main()
                       fprintf(stderr,"(SERVEUR %d) Requete CONSULT reçue de %d\n",getpid(),m.expediteur);
                       break;
                     }
-      case ACHAT :    // TO DO
+      case ACHAT :  
+                    {
+                      for (i=0 ; i<6 ; i++)
+                      {
+                        if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
+                        {
+                          reponse.type = tab->connexions[i].pidCaddie;
+                          reponse.expediteur = m.expediteur;
+                          reponse.requete = ACHAT;
+                          reponse.data1 = m.data1;
+                          strcpy(reponse.data2, m.data2);
+
+                          if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgnd ACHAT du serveur vers le caddie\n");
+                            kill(idPub, 9);
+                            exit(1);
+                          }
+                          i = 7;
+                        }
+                        else
+                        {
+                          fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                        }
+                      }
+
                       fprintf(stderr,"(SERVEUR %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
+      case CADDIE :   
+                    {
+                      for (i=0 ; i<6 ; i++)
+                      {
+                        if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
+                        {
+                          reponse.type = tab->connexions[i].pidCaddie;
+                          reponse.expediteur = m.expediteur;
+                          reponse.requete = CADDIE;
 
-      case CADDIE :   // TO DO
+                          if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgnd CADDIE du serveur vers le caddie\n");
+                            kill(idPub, 9);
+                            exit(1);
+                          }
+                          i = 7;
+                        }
+                        else
+                        {
+                          fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                        }
+                      }
+
                       fprintf(stderr,"(SERVEUR %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
                       break;
-
+                    }
       case CANCEL :   // TO DO
                       fprintf(stderr,"(SERVEUR %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
                       break;
