@@ -15,10 +15,12 @@
 #include "protocole.h" // contient la cle et la structure d'un message
 
 int idQ,idShm,idSem;
-int i, idPub, idCad;
+int i, idPub, idCad, idAdb;
 int fdPipe[2];
 TAB_CONNEXIONS *tab;
 sigjmp_buf contexte;
+char fdWpipe[10];
+char fdRpipe[10];
 
 // Pour le fichier des utilisateurs
 #define FICHIER_UTILISATEURS "clients.dat"
@@ -93,10 +95,15 @@ int main()
     perror("Erreur de shmget");
     exit(1);
   }
-  fprintf(stderr,"idShm = %d\n",idShm);
+  fprintf(stderr,"(SERVEUR %d) Creation memoire partage OK\n",getpid());
 
   // Creation du pipe
-  // TO DO
+  if (pipe(fdPipe) == -1)
+  {
+    perror("Erreur de pipe");
+    exit(1);
+  }
+  fprintf(stderr,"(SERVEUR %d) Creation pipe OK.\n", getpid());
 
   // Creation du processus Publicite (étape 2)
   if((idPub = fork()) == -1)
@@ -113,6 +120,22 @@ int main()
           }
         }
 
+  // Creation du processus AccesBD (étape 4)
+  if((idAdb = fork()) == -1)
+  {
+    perror("Erreur de Fork() pour le accesDB");
+    exit(1);
+  }
+  else if (idAdb == 0)
+        {
+          sprintf(fdRpipe,"%d",fdPipe[0]);
+          if(execl("./AccesBD", "AccesBD", fdRpipe, NULL) == -1)
+          {
+            perror("Erreur de EXECL du accesDB\n");
+            exit(1);
+          }
+        }
+  
   // Initialisation du tableau de connexions
   tab = (TAB_CONNEXIONS*) malloc(sizeof(TAB_CONNEXIONS)); 
 
@@ -124,11 +147,9 @@ int main()
   }
   tab->pidServeur = getpid();
   tab->pidPublicite = idPub;
+  tab->pidAccesBD = idAdb;
 
   afficheTab();
-
-  // Creation du processus AccesBD (étape 4)
-  // TO DO
 
   MESSAGE m;
   MESSAGE reponse;
@@ -179,7 +200,6 @@ int main()
                     {
                       int presence = estPresent(m.data2);
                       int res = -1;
-                      reponse.type = m.expediteur;
                       reponse.expediteur = 1;
                       reponse.requete = LOGIN;
 
@@ -223,7 +243,7 @@ int main()
                         }
                       }
 
-                      if(res != -1)
+                      if(res == 1)
                       {
                         //Creation du cadie
                         if((idCad = fork()) == -1)
@@ -233,7 +253,8 @@ int main()
                         }
                         else if (idCad == 0)
                               {
-                                if(execl("./Caddie", "Caddie", "1", NULL) == -1)
+                                sprintf(fdWpipe,"%d",fdPipe[1]);
+                                if(execl("./Caddie", "Caddie", fdWpipe, NULL) == -1)
                                 {
                                   perror("Erreur de EXECL du caddie\n");
                                   exit(1);
@@ -242,7 +263,7 @@ int main()
 
                         for (i=0 ; i<6 ; i++)
                         {
-                          if((tab->connexions[i].pidFenetre == m.expediteur) && res == 1)
+                          if(tab->connexions[i].pidFenetre == m.expediteur)
                           {
                             strcpy(tab->connexions[i].nom,m.data2);
                             tab->connexions[i].pidCaddie = idCad;
@@ -250,13 +271,24 @@ int main()
                           }
                         }
                       }
+
+                      //Envoie derequete LOGIN au client et au caddie
+                      reponse.type = m.expediteur;
                       if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
                       {
                         perror("Erreur de msgnd LOGIN du serveur vers le client\n");
                         exit(1);
                       }
-                      fprintf(stderr,"(SERVEUR %d) Requete LOGIN reçue de %d : --%d--%s--%s--\n",getpid(),m.expediteur,m.data1,m.data2,m.data3);
                       kill(reponse.type, SIGUSR1);
+
+                      reponse.type = idCad;
+                      reponse.expediteur = m.expediteur;
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgnd LOGIN du serveur vers le caddie\n");
+                        exit(1);
+                      }
+                      fprintf(stderr,"(SERVEUR %d) Requete LOGIN reçue de %d : --%d--%s--%s--\n",getpid(),m.expediteur,m.data1,m.data2,m.data3);
                       break; 
                     }
       case LOGOUT :   
@@ -491,8 +523,20 @@ void HandlerSIGINT(int sig)
     exit(1);
   }
 
+  //Arret du processus publicite
   kill(idPub, 9);
-  wait(NULL);
+
+  // Fermeture du pipe
+  if (close(fdPipe[0]) == -1)
+  {
+    perror("Erreur fermeture sortie du pipe");
+    exit(1);
+  }
+  if (close(fdPipe[1]) == -1)
+  {
+    perror("Erreur fermeture entree du pipe");
+    exit(1);
+  }
 }
 
 void HandlerSIGUSR2(int sig)
@@ -508,8 +552,15 @@ void HandlerSIGCHLD(int sig)
   {
     perror("Erreur dans le wait du serveur");
     kill(idPub, 9);
+    kill(idAdb, 9);
     wait(NULL);
     exit(1);
+  }
+
+  if(idFils == tab->pidAccesBD)
+  {
+    tab->pidAccesBD = 0;
+    fprintf(stderr, "(SERVEUR %d) Suppression du fils AccesDB zombi %d\n", getpid(), idFils);
   }
 
   for(i = 0; i < 6; i++)
@@ -517,7 +568,7 @@ void HandlerSIGCHLD(int sig)
     if(idFils == tab->connexions[i].pidCaddie)
     {
       tab->connexions[i].pidCaddie = 0;
-      fprintf(stderr, "(SERVEUR %d) Suppression du fils zombi %d\n", getpid(), idFils);
+      fprintf(stderr, "(SERVEUR %d) Suppression du fils Caddie zombi %d\n", getpid(), idFils);
       i = 7;
     }
   }
