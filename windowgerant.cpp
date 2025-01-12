@@ -8,7 +8,13 @@ using namespace std;
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
+#include <sys/shm.h>
+#include <sys/types.h>
 #include "protocole.h"
+
+//Fonctions de gestion du semaphore
+int sem_wait(int num); 
+int sem_signal(int num);
 
 int idArticleSelectionne = -1;
 MYSQL *connexion;
@@ -17,6 +23,12 @@ MYSQL_ROW  Tuple;
 char requete[200];
 int idSem;
 int idQ;
+int nbrArticles;
+
+int nombreDeLigne();
+MYSQL_ROW afficherArticles(int);
+
+MESSAGE m;
 
 WindowGerant::WindowGerant(QWidget *parent) : QMainWindow(parent),ui(new Ui::WindowGerant)
 {
@@ -37,13 +49,23 @@ WindowGerant::WindowGerant(QWidget *parent) : QMainWindow(parent),ui(new Ui::Win
     ui->tableWidgetStock->horizontalHeader()->setStyleSheet("background-color: lightyellow");
 
     // Recuperation de la file de message
-    // TO DO
+    fprintf(stderr,"(GERANT %d) Recuperation de l'id de la file de messages\n",getpid());
+    if((idQ = msgget(CLE,0)) == -1)
+    {
+      perror("(GERANT) Erreur de msgget");
+      exit(1);
+    }
 
     // Récupération du sémaphore
-    // TO DO
+    if ((idSem = semget(CLE,0,0)) == -1)
+    {
+      perror("Erreur de semget");
+      exit(1);
+    }
+    fprintf(stderr, "idSem = %d\n",idSem);
 
     // Prise blocante du semaphore
-    // TO DO
+    sem_wait(0);
 
     // Connexion à la base de donnée
     connexion = mysql_init(NULL);
@@ -54,14 +76,18 @@ WindowGerant::WindowGerant(QWidget *parent) : QMainWindow(parent),ui(new Ui::Win
       exit(1);  
     }
 
-    // Recuperation des articles en BD
-    // TO DO
-
-    // Exemples à supprimer
-    ajouteArticleTablePanier(1,"pommes",2.53,25);
-    ajouteArticleTablePanier(2,"oranges",5.83,1);
-    ajouteArticleTablePanier(3,"bananes",1.85,12);
-    ajouteArticleTablePanier(4,"cerises",5.44,17);
+    // Recuperation des articles en BD et affichage
+    // Construction de la requête SELECT
+    fprintf(stderr,"(GERANT %d) Recuperation des articles la base de données...\n",getpid());
+    nbrArticles = nombreDeLigne();
+    for(int i = 1; i <= nbrArticles; i++)
+    {
+      Tuple = afficherArticles(i);
+      if (Tuple != NULL) 
+      {
+        ajouteArticleTablePanier(atoi(Tuple[0]), Tuple[1], atof(Tuple[2]), atoi(Tuple[3]));
+      }
+    }
 }
 
 WindowGerant::~WindowGerant()
@@ -170,7 +196,7 @@ void WindowGerant::closeEvent(QCloseEvent *event)
   mysql_close(connexion);
 
   // Liberation du semaphore
-  // TO DO
+  sem_signal(0),
 
   exit(0);
 }
@@ -183,6 +209,16 @@ void WindowGerant::on_pushButtonPublicite_clicked()
   fprintf(stderr,"(GERANT %d) Clic sur bouton Mettre a jour\n",getpid());
   // TO DO (étape 7)
   // Envoi d'une requete NEW_PUB au serveur
+  m.type = 1;
+  m.expediteur = getpid();
+  m.requete = NEW_PUB;
+  strcpy(m.data4, getPublicite());
+
+  if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+  {
+    perror("Erreur de msgnd NEW_PUB du gerant\n");
+    exit(1);
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -202,5 +238,128 @@ void WindowGerant::on_pushButtonModifier_clicked()
   fprintf(stderr,"(GERANT %d) Modification en base de données pour id=%d\n",getpid(),idArticleSelectionne);
 
   // Mise a jour table BD
-  // TO DO
+  //Mise à jour du stock
+  sprintf(requete, "UPDATE UNIX_FINAL SET stock = %d WHERE id = %d;", getStock(), idArticleSelectionne);
+  fprintf(stderr, "---->%s\n", requete);
+
+  if (mysql_query(connexion, requete)) 
+  {
+      fprintf(stderr, "Erreur lors de la requête UPDATE du stock : %s\n", mysql_error(connexion));
+      mysql_close(connexion);
+      exit(1);
+  }
+  //Mise à jour du prix
+  sprintf(requete, "UPDATE UNIX_FINAL SET prix = %d WHERE id = %d;", stoi(tmp), idArticleSelectionne);
+  fprintf(stderr, "---->%s\n", requete);
+
+  if (mysql_query(connexion, requete)) 
+  {
+      fprintf(stderr, "Erreur lors de la requête UPDATE du prix : %s\n", mysql_error(connexion));
+      mysql_close(connexion);
+      exit(1);
+  }
+
+  // Recuperation des articles en BD et affichage
+  videTableStock();
+  fprintf(stderr,"(GERANT %d) Mise a jour des articles dans la base de données...\n",getpid());
+  nbrArticles = nombreDeLigne();
+  for(int i = 1; i <= nbrArticles; i++)
+  {
+    Tuple = afficherArticles(i);
+    if (Tuple != NULL) 
+    {
+      ajouteArticleTablePanier(atoi(Tuple[0]), Tuple[1], atof(Tuple[2]), atoi(Tuple[3]));
+    }
+  }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+MYSQL_ROW afficherArticles(int nA)
+{
+  MYSQL_ROW result;
+
+  sprintf(requete, "SELECT * FROM UNIX_FINAL WHERE id = %d;", nA);
+
+  // Exécution de la requête
+  if (mysql_query(connexion, requete)) {
+      fprintf(stderr, "Erreur lors de la requête SELECT : %s\n", mysql_error(connexion));
+      mysql_close(connexion);
+      exit(1);
+  }
+
+  // Acces BD
+  // Récupération des résultats
+  resultat = mysql_store_result(connexion);
+  if (resultat == NULL) {
+      fprintf(stderr, "Erreur lors de la récupération des résultats : %s\n", mysql_error(connexion));
+      mysql_close(connexion);
+      exit(1);
+  }
+
+  // Preparation de la reponse
+  // Affichage des résultats
+  int num_champs = mysql_num_fields(resultat);
+
+  if ((result = mysql_fetch_row(resultat))) 
+  {
+    return result;
+  }
+
+  return NULL;
+}
+
+int nombreDeLigne()
+{
+  // Construction de la requête COUNT
+  sprintf(requete, "SELECT COUNT(*) FROM UNIX_FINAL;");
+
+  // Exécution de la requête
+  if (mysql_query(connexion, requete)) {
+      fprintf(stderr, "Erreur lors de la requête COUNT : %s\n", mysql_error(connexion));
+      mysql_close(connexion);
+      exit(1);
+  }
+
+  // Récupération des résultats
+  resultat = mysql_store_result(connexion);
+  if (resultat == NULL) {
+      fprintf(stderr, "Erreur lors de la récupération des résultats : %s\n", mysql_error(connexion));
+      mysql_close(connexion);
+      exit(1);
+  }
+
+  // Retourné le résultat
+  if ((Tuple = mysql_fetch_row(resultat))) {
+      printf("Nombre d'éléments dans UNIX_FINAL : %d\n", atoi(Tuple[0]));
+      return atoi(Tuple[0]);
+  }
+  
+  return -1;
+}
+
+// Fonction pour manipuler le semaphore 
+// un sémaphore valant 1 si la base de données est accessible par les clients et 0 sinon 
+
+//Passe le semaphore à 0 donc le recupere (c’est-à-dire si le gérant est actif)
+int sem_wait(int num)
+{
+  struct sembuf action;
+  action.sem_num = num;
+  action.sem_op = -1; // pour retirer 1 au semaphore
+  action.sem_flg = SEM_UNDO;
+  int semVal = semop(idSem,&action,1);
+  fprintf(stderr,"(GARANT %d) Prend la main, semaphore : %d\n",getpid(), semVal);
+  return semVal;
+}
+
+//Passe la semaphore a 1 donc le libere (c’est-à-dire si le gérant n est plus actif)
+int sem_signal(int num)
+{
+  struct sembuf action;
+  action.sem_num = num;
+  action.sem_op = 1; // pour ajouter 1 au semaphores
+  action.sem_flg = SEM_UNDO;
+  int semVal = semop(idSem,&action,1);
+  fprintf(stderr,"(GARANT %d) Libere la main, semaphore :  %d\n",getpid(), semVal);
+  return semVal; 
 }
