@@ -2,17 +2,17 @@
 
 L’application à réaliser est une application d’achats en ligne de fruits/légumes intitulée « Le 
 Maraicher en ligne » : 
-- Les clients de l’application doivent se logger à l’aide d’un couple nom/mot de passe stocké 
+• Les clients de l’application doivent se logger à l’aide d’un couple nom/mot de passe stocké 
 dans un fichier binaire. Une fois loggés, ils peuvent naviguer dans le catalogue du magasin en 
 ligne et faire leurs achats. Leurs achats sont stockés dans un panier apparaissant dans le bas de 
 leur interface graphique. Une publicité apparaît en permanence en rouge dans la zone jaune 
 située au milieu de la fenêtre. Cette publicité défile de la droite vers la gauche en permanence 
 qu’il y ait un client loggé ou pas. 
 
-- Un gérant pourra également se connecter à l’application afin de modifier son stock de fruits 
+• Un gérant pourra également se connecter à l’application afin de modifier son stock de fruits 
 et légumes et mettre à jour la publicité.  
 
-- Evidemment, les clients n’accèdent pas eux-mêmes à la base de données. Toutes les actions 
+• Evidemment, les clients n’accèdent pas eux-mêmes à la base de données. Toutes les actions 
 réalisées par un utilisateur connecté provoqueront l’envoi d’une requête au serveur qui la 
 traitera.
 
@@ -57,6 +57,29 @@ processus Caddie transmettront alors (via un unique pipe de communication) leurs
 
 ## Etape 5 : Achats d’articles et mise à jour du panier 
 Il s’agit ici de gérer l’achat d’articles par le client, Cette étape va se faire en 2 temps : 
-a) L’envoi d’une requête d’ACHAT au serveur et la mise à jour de la base de données. 
-b) L’envoi d’une requête CADDIE au serveur afin de mettre à jour l’affichage du caddie 
+• L’envoi d’une requête d’ACHAT au serveur et la mise à jour de la base de données. 
+• L’envoi d’une requête CADDIE au serveur afin de mettre à jour l’affichage du caddie 
 dans la table de la fenêtre du client.
+
+## Etape 6 : Suppression d’articles, paiement et mise ne place d’un Time Out 
+Il s’agit ici tout d'abord de gérer la suppression d’articles du panier par le client ainsi que le paiement : 
+• Lors d’un clic sur le bouton « Supprimer article », cela a pour effet de supprimer complètement l’article du panier et remettre à jour la base de données
+• Lors d’un clic sur le bouton « Vider le panier », cela a pour effet de vider le panier sans 
+payer (on abandonne donc l’achat) et le stock sera remis à jour en base de données
+• Lors d’un clic sur le bouton « Payer », cela a pour effet de valider définitivement l’achat des 
+articles du panier
+
+> IMPORTANT : Remarquez que si l’utilisateur réalise un LOGOUT ou quitte l’application 
+cliente alors que le panier contient des articles, la base de données doit être remise à jour !
+
+Ensuite si le client reste en inactivité trop longtemps (nous dirons 60 secondes), il doit être 
+automatiquement deloggé (l’application cliente doit continuer à tourner et permettre un 
+nouveau login). De plus, si des articles sont présents dans le panier lors du time out, ils 
+doivent être remis en base de données. 
+Autre événement qui peut se produire : l’application client plante sans pouvoir envoyer de 
+requête au serveur. Il est nécessaire que la base de données soit mise à jour malgré tout. 
+Pour toutes ces raisons, le time out ne peut pas être géré au niveau du processus client. Un 
+time out doit être mis en place dans le processus Caddie. Si ce processus ne reçoit pas de 
+requête pendant plus de 60 secondes, il doit recevoir le signal SIGALRM (utilisation de 
+alarm). Attention que dès que le processus Caddie reçoit une nouvelle requête, il doit annuler 
+l’alarme (utilisation de alarm(0)).
