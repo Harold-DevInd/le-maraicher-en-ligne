@@ -46,6 +46,9 @@ int hash(const char* motDePasse);
 void ajouteUtilisateur(const char* nom, const char* motDePasse);
 int verifieMotDePasse(int pos, const char* motDePasse);
 
+//Fonction tuilise pour gerer le semaphore
+int sem_signal(int, int);
+
 int main()
 {
   // Armement des signaux
@@ -104,6 +107,20 @@ int main()
     exit(1);
   }
   fprintf(stderr,"(SERVEUR %d) Creation pipe OK.\n", getpid());
+
+  //Creation du semaphore et initialisation a 1
+  if ((idSem = semget(CLE ,1, IPC_CREAT | IPC_EXCL | 0600)) == -1)
+  {
+    perror("Erreur de semget");
+    exit(1);
+  }
+
+  if (semctl(idSem,0,SETVAL,1) == -1)
+  {
+    perror("Erreur de semctl");
+    exit(1);
+  }
+  fprintf(stderr,"(SERVEUR %d) Creation et initialisation du semaphore OK\n",getpid());
 
   // Creation du processus Publicite (étape 2)
   if((idPub = fork()) == -1)
@@ -188,8 +205,6 @@ int main()
                         if(tab->connexions[i].pidFenetre == m.expediteur)
                         {
                           tab->connexions[i].pidFenetre = 0;
-                          //strcpy(tab->connexions[i].nom,"");
-                          //tab->connexions[i].pidCaddie = 0;
                           i = 7;
                         }
                       }
@@ -197,6 +212,8 @@ int main()
                       break;
                     } 
       case LOGIN :  
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
                     {
                       int presence = estPresent(m.data2);
                       int res = -1;
@@ -289,9 +306,33 @@ int main()
                         exit(1);
                       }
                       fprintf(stderr,"(SERVEUR %d) Requete LOGIN reçue de %d : --%d--%s--%s--\n",getpid(),m.expediteur,m.data1,m.data2,m.data3);
-                      break; 
+
+                      sem_signal(0, 1);
                     }
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du LOGIN\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
       case LOGOUT :   
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
                     {
                       for (i=0 ; i<6 ; i++)
                       {
@@ -328,8 +369,30 @@ int main()
                       afficheTab();
 
                       fprintf(stderr,"(SERVEUR %d) Requete LOGOUT reçue de %d\n",getpid(),m.expediteur);
-                      break;
+                      
+                      sem_signal(0, 1);
                     }
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du LOGOUT\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
       case UPDATE_PUB : 
                       {
                         for (i=0 ; i<6 ; i++)
@@ -344,6 +407,8 @@ int main()
                       }
 
       case CONSULT :  
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
                     {
                       for (i=0 ; i<6 ; i++)
                       {
@@ -368,9 +433,32 @@ int main()
                         }
                       }
                       fprintf(stderr,"(SERVEUR %d) Requete CONSULT reçue de %d\n",getpid(),m.expediteur);
-                      break;
+                      sem_signal(0, 1);
                     }
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du CONSULT\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
       case ACHAT :  
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
                     {
                       for (i=0 ; i<6 ; i++)
                       {
@@ -397,9 +485,33 @@ int main()
                       }
 
                       fprintf(stderr,"(SERVEUR %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
-                      break;
+
+                      sem_signal(0, 1);
                     }
-      case CADDIE :   
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du ACHAT\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
+      case CADDIE :  
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1) 
                     {
                       for (i=0 ; i<6 ; i++)
                       {
@@ -424,9 +536,33 @@ int main()
                       }
 
                       fprintf(stderr,"(SERVEUR %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
-                      break;
+
+                      sem_signal(0, 1);
                     }
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du CADDIE\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
       case CANCEL :   
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
                     {
                       for (i=0 ; i<6 ; i++)
                       {
@@ -452,10 +588,34 @@ int main()
                       }
 
                       fprintf(stderr,"(SERVEUR %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
-                      break;
+
+                      sem_signal(0, 1);
                     }
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du CANCEL\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
 
       case CANCEL_ALL : 
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
                     {
                       for (i=0 ; i<6 ; i++)
                       {
@@ -481,41 +641,106 @@ int main()
                       }
 
                       fprintf(stderr,"(SERVEUR %d) Requete CANCEL_ALL reçue de %d\n",getpid(),m.expediteur);
-                      break;
+
+                      sem_signal(0, 1);
                     }
-
-      case PAYER : 
-                  {
-                    for (i=0 ; i<6 ; i++)
+                    else
                     {
-                      if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
-                      {
-                        reponse.type = tab->connexions[i].pidCaddie;
-                        reponse.expediteur = m.expediteur;
-                        reponse.requete = CANCEL_ALL;
-                        reponse.data1 = m.data1;
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
 
-                        if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
-                        {
-                          perror("Erreur de msgnd CADDIE du serveur vers le caddie lors du CANCEL_ALL\n");
-                          kill(idPub, 9);
-                          exit(1);
-                        }
-                        i = 7;
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du CANCEL_ALL\n");
+                        exit(1);
                       }
                       else
                       {
-                        fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                        kill(m.expediteur, SIGUSR1);
                       }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
                     }
+                    break;
+
+      case PAYER : 
+                    // verifie que le gerant n'est pas actif
+                    if(sem_signal(0, -1) != -1)
+                    {
+                      for (i=0 ; i<6 ; i++)
+                      {
+                        if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
+                        {
+                          reponse.type = tab->connexions[i].pidCaddie;
+                          reponse.expediteur = m.expediteur;
+                          reponse.requete = CANCEL_ALL;
+                          reponse.data1 = m.data1;
+
+                          if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgnd CADDIE du serveur vers le caddie lors du CANCEL_ALL\n");
+                            kill(idPub, 9);
+                            exit(1);
+                          }
+                          i = 7;
+                        }
+                        else
+                        {
+                          fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                        }
+                      }
 
                       fprintf(stderr,"(SERVEUR %d) Requete PAYER reçue de %d\n",getpid(),m.expediteur);
-                      break;
-                  }
 
-      case NEW_PUB :  // TO DO
+                      sem_signal(0, 1);
+                    }
+                    else
+                    {
+                      //Le gerant est connecte donc pas d'acces a la DB possible pour les autre processus
+
+                      reponse.type = m.expediteur;
+                      reponse.requete = BUSY;
+                      reponse.expediteur = getpid();
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgsnd BUSY du serveur vers le caddie lors du CANCEL_ALL\n");
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(m.expediteur, SIGUSR1);
+                      }
+
+                      fprintf(stderr, "(SERVEUR %d) Requete BUSY envoye vers le client %d", getpid(), m.expediteur);
+                    }
+                    break;
+
+      case NEW_PUB :  
+                    {
+                      //Envoie de la requete de mise a jour a tout les clients connecte minimum
+                      reponse.type = idPub;
+                      reponse.requete = NEW_PUB;
+                      reponse.expediteur = m.expediteur;
+                      strcpy(reponse.data4, m.data4);
+
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                      {
+                        perror("Erreur de msgnd NEW_PUB du serveur vers le processus publicite\n");
+                        kill(idPub, 9);
+                        exit(1);
+                      }
+                      else
+                      {
+                        kill(idPub, SIGUSR1);
+                      }
+
                       fprintf(stderr,"(SERVEUR %d) Requete NEW_PUB reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
     }
     afficheTab();
   }
@@ -654,7 +879,7 @@ int verifieMotDePasse(int pos, const char* motDePasse)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void HandlerSIGINT(int sig)
 {
-    // Suppression de la memoire partagee
+  // Suppression de la memoire partagee
   if (shmctl(idShm,IPC_RMID,NULL) == -1)
   {
     perror("Erreur de shmctl");
@@ -667,8 +892,19 @@ void HandlerSIGINT(int sig)
     exit(1);
   }
 
+  // Suppression de l’ensemble de semaphores
+  if (semctl(idSem,0,IPC_RMID) == -1)
+  {
+    perror("Erreur de semctl (3)");
+  }
+
   //Arret du processus publicite
   kill(idPub, 9);
+
+  //Arret du processus accesdb
+  kill(idAdb, 9);
+  // netoyer tous les fils zombie
+  wait(NULL); 
 
   // Fermeture du pipe
   if (close(fdPipe[0]) == -1)
@@ -681,6 +917,7 @@ void HandlerSIGINT(int sig)
     perror("Erreur fermeture entree du pipe");
     exit(1);
   }
+  exit(1);
 }
 
 void HandlerSIGUSR2(int sig)
@@ -695,8 +932,6 @@ void HandlerSIGCHLD(int sig)
   if((idFils = wait(NULL)) == -1)
   {
     perror("Erreur dans le wait du serveur");
-    kill(idPub, 9);
-    kill(idAdb, 9);
     wait(NULL);
     exit(1);
   }
@@ -718,4 +953,24 @@ void HandlerSIGCHLD(int sig)
   }
   //Retour au while(1)
   siglongjmp(contexte,10);
+}
+
+// Fonction pour verifier la semaphore
+// Lorsqu’il reçoit une requête, il doit vérifier que le Gérant n’est pas actif. Pour
+// cela, il réalise une tentative de prise non bloquante du sémaphore 
+int sem_signal(int num, int choix)
+{
+  struct sembuf action;
+  action.sem_num = num;
+  
+  // on ne modifie pas la valeur du semaphore (car seul le gerant le fait)
+  action.sem_op = choix; 
+
+  // IPC_NOWAIT car on ne veut pas que se soit bloquant
+  action.sem_flg = SEM_UNDO | IPC_NOWAIT; 
+
+  // return -1 si le semaphore est a 0 (gerant actif), sinon != -1 si semaphore = 1
+  int semVal = semop(idSem,&action,1);
+  fprintf(stderr,"(SERVEUR %d) Verifie valeur semaphore :  %d\n",getpid(), semVal);
+  return semVal; 
 }

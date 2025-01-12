@@ -1,7 +1,7 @@
 # Le maraicher en ligne
 
-L’application à réaliser est une application d’achats en ligne de fruits/légumes intitulée « Le 
-Maraicher en ligne » : 
+L’application réaliser est une application d’achats en ligne de fruits/légumes intitulée « Le 
+Maraicher en ligne » en C principalement mais avec une structure en C++ et dans un environnement Unix (Debian dans notre cas) : 
 • Les clients de l’application doivent se logger à l’aide d’un couple nom/mot de passe stocké 
 dans un fichier binaire. Une fois loggés, ils peuvent naviguer dans le catalogue du magasin en 
 ligne et faire leurs achats. Leurs achats sont stockés dans un panier apparaissant dans le bas de 
@@ -83,3 +83,15 @@ time out doit être mis en place dans le processus Caddie. Si ce processus ne re
 requête pendant plus de 60 secondes, il doit recevoir le signal SIGALRM (utilisation de 
 alarm). Attention que dès que le processus Caddie reçoit une nouvelle requête, il doit annuler 
 l’alarme (utilisation de alarm(0)).
+
+## Etape 7 : Processus Gérant – Mise en place d’un sémaphore 
+Une application « Gérant du Maraicher en ligne » peut être utilisée pour modifier les articles 
+de la base de données (prix et stock uniquement) et mettre à jour la publicité qui défile dans 
+les interfaces graphiques des clients.
+
+Il s’agit d’une application indépendante qui devra être lancée en ligne de commande. Et qui pourra : 
+**• Modifier le prix et/ou du stock des articles de la base de données :** aucun login ni mot de passe n’est nécessaire pour utiliser l’application Gerant. Il suffit de la lancer en ligne de commande. Cette application se connecte directement à la base de données. Une fois démarrée, elle récupère directement l’ensemble des articles de la base de données et les affiches dans la table « Stock » de l’interface graphique.
+**• Empêcher les clients de modifier/consulter la base de données si Gérant est actif :** Lorsque le processus Gérant est lancé, on doit empêcher les clients de se logger, de consulter ou de modifier le stock en réalisant de achats. Les clients doivent donc être prévenus que le « serveur est en maintenance ».  Pour cela, nous allons utiliser un sémaphore valant 1 si la base de données est accessible par les clients et 0 sinon (c’est-à-dire si le gérant est actif). C’est le processus Serveur qui doit créer et initialiser correctement le sémaphore. Ce sera également à lui de le supprimer lors de sa fin.
+**• Modifier la publicité dans la fenêtre des clients :** La publicité peut être mise à jour par le Gérant à tout moment et s’afficher de manière synchronisée dans toutes les fenêtres clients connectées au serveur (pas nécessairement loggée).
+
+> La gestion du sémaphore dans notre implémentation n'est pas correcte à celle demandée, en effet dans notre solution nous avons implémenté un sémaphore qui permet effectivement au gérant d'être le seul à avoir accès à la BD lorsqu'il est lancé, mais celui-ci autorise également un seul client à un seul client à la fois, ce qui n'est pas vraiment le résultat attendu. De plus, la gestion de la fermeture des différents processus fils de serveur est aussi à revoir (kill et HandlerSIGINT). Si vous avez des améliorations à suggérer, à vous le clavier.

@@ -18,12 +18,24 @@ char *pShm;
 void handlerSIGUSR1(int sig);
 int fd;
 int i;
+
 MESSAGE m;
+char pub[51];
+
+struct sigaction A;
 
 int main()
 {
   // Armement des signaux
-  // TO DO
+  A.sa_handler = handlerSIGUSR1;
+  sigemptyset(&A.sa_mask);
+  A.sa_flags = 0;
+
+  if(sigaction(SIGUSR1, &A, NULL)== -1)
+  {
+    perror("Erreur de sigaction de SIGUSR1 dans la  publicite ");
+    exit(1);
+  }
 
   // Masquage des signaux
   sigset_t mask;
@@ -56,7 +68,6 @@ int main()
   fprintf(stderr,"pShm = %ld\n",pShm);
 
   // Mise en place de la publicité en mémoire partagée
-  char pub[51];
   strcpy(pub,"Bienvenue sur le site du Maraicher en ligne !");
 
   for (int i=0 ; i<=50 ; i++) pShm[i] = ' ';
@@ -71,22 +82,46 @@ int main()
     m.expediteur = getpid();
     m.requete = UPDATE_PUB;
 
-    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    // Envoie le signal 0 au Serveur pour verifier si il est en vie
+    if (kill(getppid(), 0) == 0) 
+    { 
+      if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+      {
+        perror("Erreur de msgsnd UPDATE_PUB de la publicité\n");
+        exit(1);
+      }
+      fprintf(stderr,"Mise a jour envoyé\n");
+
+      sleep(1); 
+
+      // Decallage vers la gauche
+      char firstChar = pShm[0];
+      for (i = 0; i < 50; i++) 
+      {
+          pShm[i] = pShm[i + 1];
+      }
+      pShm[50] = firstChar;
+    }
+    else
     {
-      perror("Erreur de msgsnd UPDATE_PUB de la publicité\n");
+      // Suppression de la memoire partagee
+      if (shmctl(idShm,IPC_RMID,NULL) == -1)
+      {
+        perror("Erreur de shmctl");
+        exit(1);
+      }
+
+      //Fermeture de la file de message
+      if(msgctl(idQ, IPC_RMID, NULL) == -1)
+      {
+        perror("Erreur de msgctl sur le serveur");
+        exit(1);
+      }
+      
+      fprintf(stderr,"(Publicite %d) Serveur indisponible, fermeture du processus publicite\n", getpid());
       exit(1);
     }
-    fprintf(stderr,"Mise a jour envoyé\n");
-
-    sleep(1); 
-
-    // Decallage vers la gauche
-    char firstChar = pShm[0];
-    for (i = 0; i < 50; i++) 
-    {
-        pShm[i] = pShm[i + 1];
-    }
-    pShm[50] = firstChar;
+    
   }
 }
 
@@ -95,6 +130,16 @@ void handlerSIGUSR1(int sig)
   fprintf(stderr,"(PUBLICITE %d) Nouvelle publicite !\n",getpid());
 
   // Lecture message NEW_PUB
+  if (msgrcv(idQ, &m, sizeof(MESSAGE)-sizeof(long), getpid(), 0) == -1)
+  {
+    perror("(PUBLICITE) Erreur de msgrcv");
+    exit(1);
+  }
+
+  strcpy(pub, m.data4);
 
   // Mise en place de la publicité en mémoire partagée
+  for (int i=0 ; i<=50 ; i++) pShm[i] = ' ';
+  pShm[51] = '\0';
+  for (int i=0 ; i<strlen(pub) ; i++) pShm[i] = pub[i];
 }

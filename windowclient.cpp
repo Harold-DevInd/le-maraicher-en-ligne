@@ -667,13 +667,19 @@ void handlerSIGUSR1(int sig)
                     }
          case TIME_OUT : 
                     {
+                      fprintf(stderr,"Signal reçue par le client : TIME_OUT\n");
                       w->logoutOK();
                       w->dialogueMessage("Time out", "Vous avez  automatiquement déconnecté pour cause d’inactivité");
                       break;
                     }
 
-         case BUSY : // TO DO (étape 7)
-                    break;
+         case BUSY : 
+                    {
+                      fprintf(stderr,"Signal reçue par le client : BUSY\n");
+                      // Si le gerant est connecte alors message d erreur
+                      w->dialogueMessage("Serveur en maintenance", "Le serveur est en maintenance, réessayez plus tard... Merci");
+                      break;
+                    }
 
          default :
                     break;
