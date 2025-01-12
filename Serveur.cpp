@@ -301,11 +301,32 @@ int main()
                           strcpy(tab->connexions[i].nom,"");
 
                           //On tue le process caddie
-                          kill(tab->connexions[i].pidCaddie, 9);
+                          reponse.type = tab->connexions[i].pidCaddie;
                           tab->connexions[i].pidCaddie = 0;
                           i = 7;
                         }
                       }
+                      reponse.expediteur = m.expediteur;
+
+                      // on envoye CANCEL_ALL car elle permet deja de suppr tout les articles et de les remttres dans la bases de donnés
+                      reponse.requete = CANCEL_ALL; 
+                      
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long),0) == -1)
+                      {
+                        perror("Erreur de msgnd LOGOUT du serveur vers le caddie pour un CANCEL_ALL\n");
+                        exit(1);
+                      }
+
+                      //envoie requette logout au caddie pour qu'il se termine
+                      reponse.requete = LOGOUT;
+                      if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long),0) == -1)
+                      {
+                        perror("Erreur de msgnd LOGOUT du serveur vers le caddie pour un LOGOUT\n");
+                        exit(1);
+                      }
+
+                      afficheTab();
+
                       fprintf(stderr,"(SERVEUR %d) Requete LOGOUT reçue de %d\n",getpid(),m.expediteur);
                       break;
                     }
@@ -405,17 +426,92 @@ int main()
                       fprintf(stderr,"(SERVEUR %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
                       break;
                     }
-      case CANCEL :   // TO DO
+      case CANCEL :   
+                    {
+                      for (i=0 ; i<6 ; i++)
+                      {
+                        if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
+                        {
+                          reponse.type = tab->connexions[i].pidCaddie;
+                          reponse.expediteur = m.expediteur;
+                          reponse.requete = CANCEL;
+                          reponse.data1 = m.data1;
+
+                          if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgnd CADDIE du serveur vers le caddie lors du CANCEL\n");
+                            kill(idPub, 9);
+                            exit(1);
+                          }
+                          i = 7;
+                        }
+                        else
+                        {
+                          fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                        }
+                      }
+
                       fprintf(stderr,"(SERVEUR %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
 
-      case CANCEL_ALL : // TO DO
+      case CANCEL_ALL : 
+                    {
+                      for (i=0 ; i<6 ; i++)
+                      {
+                        if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
+                        {
+                          reponse.type = tab->connexions[i].pidCaddie;
+                          reponse.expediteur = m.expediteur;
+                          reponse.requete = CANCEL_ALL;
+                          reponse.data1 = m.data1;
+
+                          if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                          {
+                            perror("Erreur de msgnd CADDIE du serveur vers le caddie lors du CANCEL_ALL\n");
+                            kill(idPub, 9);
+                            exit(1);
+                          }
+                          i = 7;
+                        }
+                        else
+                        {
+                          fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                        }
+                      }
+
                       fprintf(stderr,"(SERVEUR %d) Requete CANCEL_ALL reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
 
-      case PAYER : // TO DO
+      case PAYER : 
+                  {
+                    for (i=0 ; i<6 ; i++)
+                    {
+                      if((tab->connexions[i].pidFenetre == m.expediteur) && (tab->connexions[i].pidCaddie !=0))
+                      {
+                        reponse.type = tab->connexions[i].pidCaddie;
+                        reponse.expediteur = m.expediteur;
+                        reponse.requete = CANCEL_ALL;
+                        reponse.data1 = m.data1;
+
+                        if(msgsnd(idQ, &reponse, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+                        {
+                          perror("Erreur de msgnd CADDIE du serveur vers le caddie lors du CANCEL_ALL\n");
+                          kill(idPub, 9);
+                          exit(1);
+                        }
+                        i = 7;
+                      }
+                      else
+                      {
+                        fprintf(stderr,"(SERVEUR %d) Le caddie n'existe pas pour le client %d\n",getpid(), m.expediteur);
+                      }
+                    }
+
                       fprintf(stderr,"(SERVEUR %d) Requete PAYER reçue de %d\n",getpid(),m.expediteur);
                       break;
+                  }
 
       case NEW_PUB :  // TO DO
                       fprintf(stderr,"(SERVEUR %d) Requete NEW_PUB reçue de %d\n",getpid(),m.expediteur);

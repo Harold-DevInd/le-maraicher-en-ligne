@@ -69,7 +69,6 @@ int main(int argc,char* argv[])
                       
                       // Construction de la requête SELECT
                       sprintf(requete, "SELECT * FROM UNIX_FINAL WHERE id = %d;", m.data1);
-                      fprintf(stderr, "%s\n", requete);
 
                       // Exécution de la requête
                       if (mysql_query(connexion, requete)) {
@@ -154,9 +153,8 @@ int main(int argc,char* argv[])
                       else
                         reponse.data1 = -1;
 
-                      fprintf(stderr, "-----valeur de m.data2 : %s------\n", m.data2);
                       int stockActuel = atoi(reponse.data3) - atoi(m.data2);
-                      fprintf(stderr, "-----valeur de stockActuel : %d------\n", stockActuel);
+                      
                       if(stockActuel < 0)
                       {
                         // Stock insuffisant
@@ -192,12 +190,63 @@ int main(int argc,char* argv[])
                       fprintf(stderr,"Mise a jour des achats envoyé par AccesDB\n");
                       break;
                     }
-      case CANCEL :   // TO DO
-                      fprintf(stderr,"(ACCESBD %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
+      case CANCEL :   
+                    {
                       // Acces BD
+                      // Construction de la requête SELECT
+                      fprintf(stderr, "(ACCESDB %d) Element a supprimer, id = %d, stock  dans le panier = %s\n", getpid(), m.data1, m.data2);
+
+                      sprintf(requete, "SELECT * FROM UNIX_FINAL WHERE id = %d;", m.data1);
+
+                      // Exécution de la requête
+                      if (mysql_query(connexion, requete)) {
+                          fprintf(stderr, "Erreur lors de la requête SELECT : %s\n", mysql_error(connexion));
+                          mysql_close(connexion);
+                          exit(1);
+                      }
+
+                      // Acces BD
+                      // Récupération des résultats
+                      resultat = mysql_store_result(connexion);
+                      if (resultat == NULL) {
+                          fprintf(stderr, "Erreur lors de la récupération des résultats : %s\n", mysql_error(connexion));
+                          mysql_close(connexion);
+                          exit(1);
+                      }
+
+                      // Finalisation et envoi de la reponse
+                      // Affichage des résultats
+                      int num_champs = mysql_num_fields(resultat);
+
+                      if ((Tuple = mysql_fetch_row(resultat))) 
+                      {
+                        reponse.data1 = atoi(Tuple[0]); //id
+                        strncpy(reponse.data2, Tuple[1], sizeof(reponse.data2)); //nom de l'article
+                        fprintf(stderr, "-----L element recupere se nomme : %s ", reponse.data2);
+                        reponse.data5 = atof(Tuple[2]); //prix unitaire
+                        strncpy(reponse.data3, Tuple[3], sizeof(reponse.data3)); //stock
+                        fprintf(stderr, ", et il en reste : %s------\n", reponse.data3);
+                        strncpy(reponse.data4, Tuple[4], sizeof(reponse.data2)); //chemin de l'image
+                      }
+                      else
+                        reponse.data1 = -1;
+
+                      int stockActuel = atoi(reponse.data3) + atoi(m.data2);
 
                       // Mise à jour du stock en BD
+                      sprintf(requete, "UPDATE UNIX_FINAL SET stock = %d WHERE id = %d;", stockActuel, reponse.data1);
+                      fprintf(stderr, "---->%s\n", requete);
+
+                      if (mysql_query(connexion, requete)) 
+                      {
+                          fprintf(stderr, "Erreur lors de la requête UPDATE : %s\n", mysql_error(connexion));
+                          mysql_close(connexion);
+                          exit(1);
+                      }
+                      fprintf(stderr, "-----Apres mise a jour du stock : %d------\n", stockActuel);
+                      fprintf(stderr,"(ACCESBD %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
 
     }
   }

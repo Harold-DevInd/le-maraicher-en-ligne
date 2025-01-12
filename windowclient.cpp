@@ -389,7 +389,7 @@ void WindowClient::on_pushButtonLogin_clicked()
 void WindowClient::on_pushButtonLogout_clicked()
 {
     // Envoi d'une requete CANCEL_ALL au serveur (au cas où le panier n'est pas vide)
-    // TO DO
+    w->on_pushButtonViderPanier_clicked();
 
     // Envoi d'une requete de logout au serveur
     m.type = 1;
@@ -404,7 +404,6 @@ void WindowClient::on_pushButtonLogout_clicked()
     w->logoutOK();
     printf("DeAuth envoyé\n");
 }
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowClient::on_pushButtonSuivant_clicked()
 {
@@ -459,6 +458,25 @@ void WindowClient::on_pushButtonSupprimer_clicked()
 {
     // TO DO (étape 6)
     // Envoi d'une requete CANCEL au serveur
+    m.data1 = getIndiceArticleSelectionne();
+
+    if(m.data1 == -1)
+    {
+      w->dialogueErreur("Suppression article....", "Aucun article selectionner dans le panier");
+    }
+    else
+    {
+      m.type = 1;
+      m.expediteur = getpid();
+      m.requete = CANCEL;
+
+      if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+      {
+        perror("Erreur de msgnd CANCEL du client\n");
+        exit(1);
+      }
+      printf("Supp article envoyé\n");
+    }
 
     // Mise à jour du caddie
     w->videTablePanier();
@@ -466,6 +484,16 @@ void WindowClient::on_pushButtonSupprimer_clicked()
     w->setTotal(-1.0);
 
     // Envoi requete CADDIE au serveur
+    // Envoi d'une requete de CADDIE au serveur
+    m.type = 1;
+    m.expediteur = getpid();
+    m.requete = CADDIE;
+
+    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("Erreur de msgnd CADDIE du client lors du supp article\n");
+      exit(1);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -473,6 +501,16 @@ void WindowClient::on_pushButtonViderPanier_clicked()
 {
     // TO DO (étape 6)
     // Envoi d'une requete CANCEL_ALL au serveur
+    m.type = 1;
+    m.expediteur = getpid();
+    m.requete = CANCEL_ALL;
+
+    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("Erreur de msgnd CANCEL_ALL du client\n");
+      exit(1);
+    }
+    printf("Supp article envoyé\n");
 
     // Mise à jour du caddie
     w->videTablePanier();
@@ -480,6 +518,15 @@ void WindowClient::on_pushButtonViderPanier_clicked()
     w->setTotal(-1.0);
 
     // Envoi requete CADDIE au serveur
+    m.type = 1;
+    m.expediteur = getpid();
+    m.requete = CADDIE;
+
+    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("Erreur de msgnd CADDIE du client lors du supp all article\n");
+      exit(1);
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -487,6 +534,16 @@ void WindowClient::on_pushButtonPayer_clicked()
 {
     // TO DO (étape 7)
     // Envoi d'une requete PAYER au serveur
+    m.type = 1;
+    m.expediteur = getpid();
+    m.requete = PAYER;
+
+    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("Erreur de msgnd PAYER du client\n");
+      exit(1);
+    }
+    printf("Payement envoyé\n");
 
     char tmp[100];
     sprintf(tmp,"Merci pour votre paiement de %.2f ! Votre commande sera livrée tout prochainement.",totalCaddie);
@@ -497,7 +554,15 @@ void WindowClient::on_pushButtonPayer_clicked()
     totalCaddie = 0.0;
     w->setTotal(-1.0);
 
-    // Envoi requete CADDIE au serveur
+    // Envoi requete CADDIE au serveurm.type = 1;
+    m.expediteur = getpid();
+    m.requete = CADDIE;
+
+    if(msgsnd(idQ, &m, sizeof(MESSAGE) - sizeof(long), 0) == -1)
+    {
+      perror("Erreur de msgnd CADDIE du client lors du supp all article\n");
+      exit(1);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -508,7 +573,8 @@ void handlerSIGUSR1(int sig)
     MESSAGE m;
 
     fprintf(stderr,"Signal reçue par le client\n");
-    if (msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),getpid(),0) != -1)  // !!! a modifier en temps voulu !!!
+    //if (msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),getpid(),0) != -1)
+    while((msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),getpid(),IPC_NOWAIT) != -1))  // !!! a modifier en temps voulu !!!
     {
       switch(m.requete)
       {
@@ -599,8 +665,12 @@ void handlerSIGUSR1(int sig)
                       w->setTotal(totalCaddie);
                       break;
                     }
-         case TIME_OUT : // TO DO (étape 6)
-                    break;
+         case TIME_OUT : 
+                    {
+                      w->logoutOK();
+                      w->dialogueMessage("Time out", "Vous avez  automatiquement déconnecté pour cause d’inactivité");
+                      break;
+                    }
 
          case BUSY : // TO DO (étape 7)
                     break;

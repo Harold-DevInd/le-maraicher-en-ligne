@@ -24,6 +24,8 @@ int pidClient;
 
 MYSQL* connexion;
 
+struct sigaction A;
+
 void handlerSIGALRM(int sig);
 
 int main(int argc,char* argv[])
@@ -31,10 +33,18 @@ int main(int argc,char* argv[])
   // Masquage de SIGINT
   sigset_t mask;
   sigaddset(&mask,SIGINT);
-  sigprocmask(SIG_SETMASK,&mask,NULL);
+  sigprocmask(SIG_SETMASK,&mask, NULL);
 
   // Armement des signaux
-  // TO DO
+  A.sa_handler = handlerSIGALRM;
+  sigemptyset(&A.sa_mask);
+  A.sa_flags = 0;
+
+  if (sigaction(SIGALRM, &A, NULL) == -1)
+  {
+    perror("Erreur de sigaction");
+    exit(1);
+  }
 
   // Recuperation de l'identifiant de la file de messages
   fprintf(stderr,"(CADDIE %d) Recuperation de l'id de la file de messages\n",getpid());
@@ -65,6 +75,7 @@ int main(int argc,char* argv[])
 
   while(1)
   {
+    alarm(60);
     fprintf(stderr,"\n(CADDIE %d) En attente de requete\n", getpid());
     if (msgrcv(idQ,&m,sizeof(MESSAGE)-sizeof(long),getpid(),0) == -1)
     {
@@ -72,7 +83,8 @@ int main(int argc,char* argv[])
       sleep(3);
       exit(1);
     }
-
+    
+    alarm(0);
     switch(m.requete)
     {
       case LOGIN :  {
@@ -180,18 +192,15 @@ int main(int argc,char* argv[])
                           kill(m.expediteur, SIGUSR1);
                           fprintf(stderr,"Mise a jour des achats envoyé par le Caddie\n");
 
-                          //Ajout d un article a notre liste d'article a acheté
-                          fprintf(stderr,"------Nombre d article acheté avant l'ajout, nbrArticle = %d-------\n", nbArticles);
-                          
-                          articles[nbArticles + 1].id = reponse.data1;
-                          strncpy(articles[nbArticles + 1].intitule, reponse.data2, sizeof(articles[nbArticles + 1].intitule));
-                          articles[nbArticles + 1].prix = reponse.data5;
-                          articles[nbArticles + 1].stock = atoi(reponse.data3);
-                          strncpy(articles[nbArticles + 1].image, reponse.data4, sizeof(articles[nbArticles + 1].image));
+                          //Ajout d un article a notre liste d'article a acheté  
+                          articles[nbArticles].id = reponse.data1;
+                          strncpy(articles[nbArticles].intitule, reponse.data2, sizeof(articles[nbArticles + 1].intitule));
+                          articles[nbArticles].prix = reponse.data5;
+                          articles[nbArticles].stock = atoi(reponse.data3);
+                          strncpy(articles[nbArticles].image, reponse.data4, sizeof(articles[nbArticles + 1].image));
 
                           nbArticles++;
                         }
-                          fprintf(stderr,"------Nombre d article acheté apres l'ajout, nbrArticle = %d-------\n", nbArticles);
                       }
                       
                       fprintf(stderr,"(CADDIE %d) Requete ACHAT reçue de %d\n",getpid(),m.expediteur);
@@ -200,11 +209,9 @@ int main(int argc,char* argv[])
       case CADDIE :   
                     {
                       //Envie e chaque artice au client pour affichage
-                      fprintf(stderr,"------Nombre d article envoyé, nbrArticle = %d-------\n", nbArticles);
-                      for(int i = 1; i <= nbArticles; i++)
+                      for(int i = 0; i < nbArticles; i++)
                       {
                         reponse.data1 = articles[i].id;
-                        fprintf(stderr,"------Article envoyé, id = %d-------\n", reponse.data1);
                         strncpy(reponse.data2, articles[i].intitule, sizeof(reponse.data2));
                         reponse.data5 = articles[i].prix;
                         sprintf(reponse.data3, "%d", articles[i].stock);
@@ -226,26 +233,66 @@ int main(int argc,char* argv[])
                       fprintf(stderr,"(CADDIE %d) Requete CADDIE reçue de %d\n",getpid(),m.expediteur);
                       break;
                     }
-      case CANCEL :   // TO DO
-                      fprintf(stderr,"(CADDIE %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
+      case CANCEL :   
+                    {
+                      //Recuperation de l'article a supprimer                        
+                      requete.data1 = articles[m.data1].id;
+                      sprintf(requete.data2, "%d", articles[m.data1].stock);
+                      fprintf(stderr, "(CADDIE %d) Element a supprimer, id = %d, stock dans le panier = %s\n", getpid(), requete.data1, requete.data2);
 
                       // on transmet la requete à AccesBD
+                      requete.type = m.expediteur;
+                      requete.expediteur = getpid();
+                      requete.requete = CANCEL;
+                      if (write(fdWpipe, &requete, sizeof(MESSAGE)) != sizeof(MESSAGE)) 
+                      {
+                        perror("Erreur de write(3) dans le caddie"); 
+                        sleep(3);
+                        exit(1); 
+                      }
 
                       // Suppression de l'aricle du panier
+                      for(int i = m.data1; i < 9; i++)
+                      {
+                        articles[i] = articles[i + 1];
+                      }
+                      nbArticles--;
+                      fprintf(stderr,"(CADDIE %d) Requete CANCEL reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
 
-      case CANCEL_ALL : // TO DO
-                      fprintf(stderr,"(CADDIE %d) Requete CANCEL_ALL reçue de %d\n",getpid(),m.expediteur);
-
+      case CANCEL_ALL : 
+                    {
+                      requete.type = m.expediteur;
                       // On envoie a AccesBD autant de requeres CANCEL qu'il y a d'articles dans le panier
+                      for(int i = 0; i < nbArticles; i++)
+                      {
+                        requete.expediteur = getpid();
+                        requete.requete = CANCEL;
 
+                        sprintf(requete.data2,"%d", articles[i].stock);
+                        requete.data1 = articles[i].id;
+                        
+                        
+                        if (write(fdWpipe, &requete, sizeof(MESSAGE)) != sizeof(MESSAGE)) 
+                        {
+                          perror("Erreur de write(3) dans le caddie"); 
+                          sleep(3);
+                          exit(1); 
+                        }
+                      }
+                      
                       // On vide le panier
+                      nbArticles = 0;
+                      fprintf(stderr,"(CADDIE %d) Requete CANCEL_ALL reçue de %d\n",getpid(),m.expediteur);
                       break;
+                    }
 
       case PAYER :    // TO DO
                       fprintf(stderr,"(CADDIE %d) Requete PAYER reçue de %d\n",getpid(),m.expediteur);
 
                       // On vide le panier
+                      nbArticles = 0;
                       break;
     }
   }
@@ -253,12 +300,42 @@ int main(int argc,char* argv[])
 
 void handlerSIGALRM(int sig)
 {
+  MESSAGE requete;
+
   fprintf(stderr,"(CADDIE %d) Time Out !!!\n",getpid());
 
   // Annulation du caddie et mise à jour de la BD
-  // On envoie a AccesBD autant de requetes CANCEL qu'il y a d'articles dans le panier
 
+  // On envoie a AccesBD autant de requetes CANCEL qu'il y a d'articles dans le panier
+  for(int i = 0; i < nbArticles; i++)
+  {
+    requete.expediteur = getpid();
+    requete.requete = CANCEL;
+
+    sprintf(requete.data2,"%d", articles[i].stock);
+    requete.data1 = articles[i].id;
+    
+    
+    if (write(fdWpipe, &requete, sizeof(MESSAGE)) != sizeof(MESSAGE)) 
+    {
+      perror("Erreur de write(4) dans le caddie"); 
+      sleep(3);
+      exit(1); 
+    }
+  }
+
+  nbArticles = 0;
+  
   // Envoi d'un Time Out au client (s'il existe toujours)
-         
+  requete.expediteur = getpid();
+  requete.type = pidClient;
+  requete.requete = TIME_OUT;
+  if(msgsnd(idQ, &requete, sizeof(MESSAGE) - sizeof(long),0) == -1)
+  {
+    perror("Erreur de msgnd dans le handlerAlarm du CADDIE\n");
+  }
+  kill(pidClient, SIGUSR1); 
+  
+  close(fdWpipe);
   exit(0);
 }
